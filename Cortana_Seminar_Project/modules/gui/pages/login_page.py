@@ -10,8 +10,8 @@ from pathlib import Path
 from modules.core import page_handler
 
 class LoginPage(ctk.CTkFrame):
-    def __init__(self, app):
-        super().__init__(app, corner_radius=0)
+    def __init__(self):
+        super().__init__(master=None, corner_radius=0)
 
         self.username = ctk.CTkEntry(
             self, placeholder_text="Username"
@@ -23,7 +23,5 @@ class LoginPage(ctk.CTkFrame):
         )
         self.login_btn.pack()
 
-        #page_handler.pages["login"] = self # The navigation function already handles this
-
-    def login():
+    def login(self):
         pass
