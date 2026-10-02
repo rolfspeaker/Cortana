@@ -2,6 +2,7 @@
 # This module interacts with the SQL database to create new user accounts 
 # It's responsible for inserting new user data into the database
 
+from cffi import VerificationError
 import customtkinter as ctk
 from modules.core import page_handler
 
@@ -13,6 +14,10 @@ from modules.core import database
 import sqlite3
 from contextlib import closing
 from argon2 import PasswordHasher
+
+# The active account
+# None means nobody is logged in
+current_account: dict | None = None
 
 password_hasher = PasswordHasher()
 
@@ -57,3 +62,31 @@ def create_account(username: str, email: str, phone: str, password: str, first_n
         return False, "Could not save the account. Please try again."
 
     return True, "Account created successfully! You can now log in."
+
+
+def log_into_account(username: str, password: str) -> tuple[bool, str]:
+    global current_account
+
+    # Load account details without loading the password hash
+    with closing(database.connect()) as connection:
+        account = connection.execute(
+            """
+            SELECT id, first_name, last_name, email, phone, username
+            FROM users
+            WHERE username = ?
+            """,
+            (username,),
+        ).fetchone()
+
+    if account is None:
+        return False, "Account not found."
+
+    # Remember this account for the current app session
+    current_account = dict(account)
+
+    return True, "Logged in successfully."
+
+
+def log_out_of_account():
+    global current_account
+    current_account = None

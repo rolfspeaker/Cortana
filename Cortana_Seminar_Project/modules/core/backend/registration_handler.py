@@ -8,7 +8,7 @@ from modules.gui import notification as notification_handler
 from email_validator import validate_email, EmailNotValidError
 
 from modules.core import database 
-from modules.core.backend import account_creator
+from modules.core.backend import account_handler
 
 def validate_attempt(page: ctk.CTkFrame) -> bool:
     first_name: str = page.first_name.get().strip()
@@ -147,7 +147,7 @@ def validate_attempt(page: ctk.CTkFrame) -> bool:
 
     # Navigate only after the account is successfully saved.
 
-    success, message = account_creator.create_account(
+    success, message = account_handler.create_account(
         username=username,
         email=email,
 
@@ -162,7 +162,7 @@ def validate_attempt(page: ctk.CTkFrame) -> bool:
         notification_handler.success_notification(
             message
         )
-        page_handler.navigate_to_page("login", True)
+        page_handler.navigate_to_page("login")
     else:
         notification_handler.error_notification(
             message

@@ -126,7 +126,7 @@ class RegisterPage(ctk.CTkFrame):
         self.canvas.tag_bind(
             self.login_link,
             "<Button-1>",
-            lambda event: page_handler.navigate_to_page("login", True),
+            lambda event: page_handler.navigate_to_page("login"),
         )
         self.canvas.tag_bind(
             self.login_link,

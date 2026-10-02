@@ -60,7 +60,7 @@ def initialize_pages():
         page.place_forget()
 
 
-def navigate_to_page(page_title: str, refresh: bool = False):
+def navigate_to_page(page_title: str, refresh: bool = True):
     global current_page
     #print(pages.keys()); 
 

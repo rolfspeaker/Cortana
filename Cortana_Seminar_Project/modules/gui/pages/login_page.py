@@ -2,7 +2,7 @@ import customtkinter as ctk
 from PIL import Image, ImageTk
 
 from modules.core import page_handler
-
+from modules.core.backend import login_handler
 
 class LoginPage(ctk.CTkFrame):
     def __init__(self):
@@ -79,7 +79,7 @@ class LoginPage(ctk.CTkFrame):
             bg_color="#C770A4",
             text_color="#653081",
             font=ctk.CTkFont(size=15, weight="bold"),
-            command=self.login,
+            command=lambda: login_handler.validate_attempt(self),
         )
         self._login_window = self.canvas.create_window(
             0, 0, window=self.login_btn, anchor="nw"
