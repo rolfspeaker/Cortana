@@ -10,9 +10,10 @@ import numpy as np
 from pathlib import Path
 from modules.core import page_handler
 
+from modules.core.page_handler import navigate_to_page
+
 GRADIENT_TOP = (151, 78, 248)
 GRADIENT_BOTTOM = (255, 145, 80)
-
 
 def create_gradient(width, height, color_top, color_bottom):
     top = np.array(color_top, dtype=float)
@@ -70,20 +71,13 @@ def build_landing_page(app):
     # instead of blending into the gradient behind it.
     button_bg = lerp_color(0.5, GRADIENT_TOP, GRADIENT_BOTTOM)
 
-    def handle_login():
-        from modules.core.page_handler import navigate_to_page
-        navigate_to_page("login")
-        
-    def handle_signup():
-        pass
-
     login_btn = ctk.CTkButton(
         bg_label, text="LOGIN", font=button_font,
         text_color="white", fg_color="#E4ADF0", hover_color="#D89AE6",
         bg_color=button_bg,
         border_width=2, border_color="#25202B", corner_radius=21,
         width=236, height=42,
-        command=lambda: handle_login(),
+        command=lambda: navigate_to_page("login"),
     )
     signup_btn = ctk.CTkButton(
         bg_label, text="SIGN UP", font=button_font,
@@ -91,7 +85,7 @@ def build_landing_page(app):
         bg_color=button_bg,
         border_width=2, border_color="#25202B", corner_radius=21,
         width=236, height=42,
-        command=lambda: handle_signup(),
+        command=lambda: navigate_to_page("register"),
     )
 
     # Embed the buttons directly into the canvas so they share the exact

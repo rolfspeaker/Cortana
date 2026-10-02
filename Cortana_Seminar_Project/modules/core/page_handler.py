@@ -6,15 +6,16 @@ import re
 
 import customtkinter as ctk
 
-pages: dict[str, ctk.CTkFrame] = {}
+pages: dict[str, type[ctk.CTkFrame]] = {} 
 current_page: str | None = None
 
 def discover_page_classes():
     # Find concrete CTkFrame classes defined in the pages package
     from modules.gui import pages as page_package
 
-    discovered: dict[str, type[ctk.CTkFrame]] = {}
+    discovered: dict[str, type[ctk.CTkFrame]] = {} # "type" because we want to store the class itself, not merely an instance of it
     module_names = [page_package.__name__]
+    
     module_names.extend(
         info.name
         for info in pkgutil.walk_packages(
