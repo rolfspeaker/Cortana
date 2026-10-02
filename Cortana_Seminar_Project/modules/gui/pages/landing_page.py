@@ -49,7 +49,7 @@ def build_landing_page(app):
     logo = bg_label.create_image(0, 0, image=bg_label.logo_image, anchor="center")
 
     title = bg_label.create_text(
-        0, 0, text="Smart Daily Planner",
+        0, 0, text="Cortana: Smart Daily Planner",
         font=("Segoe UI", 34, "bold"), fill="white",
     )
     subtitle = bg_label.create_text(

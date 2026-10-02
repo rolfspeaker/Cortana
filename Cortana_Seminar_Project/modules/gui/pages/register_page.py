@@ -2,7 +2,7 @@ import customtkinter as ctk
 from PIL import Image, ImageTk
 
 from modules.core import page_handler
-
+from modules.core.backend import registration_handler
 
 class RegisterPage(ctk.CTkFrame):
     def __init__(self):
@@ -70,7 +70,7 @@ class RegisterPage(ctk.CTkFrame):
                 show="*" if secret else "",
             )
 
-            entry.bind("<Return>", lambda event: self.signup())
+            entry.bind("<Return>", lambda event: registration_handler.validate_attempt(self), add="+")
             entry.bind("<MouseWheel>", self._scroll, add="+")
 
             window_id = self.canvas.create_window(
@@ -80,6 +80,12 @@ class RegisterPage(ctk.CTkFrame):
             self.entries[name] = entry
             setattr(self, name, entry)
             self._fields.append((label_id, window_id, entry))
+
+        #def validate_first_name(event):
+            #if not self.first_name.get().strip():
+                #self.canvas.yview_moveto(0)
+
+        #self.first_name.bind("<FocusIn>", lambda event: self.canvas.yview_moveto(0))
 
         self.signup_btn = ctk.CTkButton(
             self.canvas,
@@ -91,7 +97,7 @@ class RegisterPage(ctk.CTkFrame):
             bg_color="#C770A4",
             text_color="#653081",
             font=ctk.CTkFont(size=15, weight="bold"),
-            command=self.signup,
+            command=lambda: registration_handler.validate_attempt(self),
         )
 
         self._signup_window = self.canvas.create_window(
@@ -120,7 +126,7 @@ class RegisterPage(ctk.CTkFrame):
         self.canvas.tag_bind(
             self.login_link,
             "<Button-1>",
-            lambda event: page_handler.navigate_to_page("login"),
+            lambda event: page_handler.navigate_to_page("login", True),
         )
         self.canvas.tag_bind(
             self.login_link,
@@ -265,5 +271,4 @@ class RegisterPage(ctk.CTkFrame):
             )
             return "break"
 
-    def signup(self):
-        pass
+        

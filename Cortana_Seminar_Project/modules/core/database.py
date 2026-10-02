@@ -1,22 +1,55 @@
+# Import Python's built-in tools for working with SQLite databases
 import sqlite3
+
+# Import Path to build and work with file and folder paths
 from pathlib import Path
 
+# Store the database file's location
+# The opening parenthesis lets this expression continue onto another line
 DATABASE_PATH = (
+    # __file__ is the location of this Python script
+    # Path converts that location into a path object
+    # resolve() makes it an absolute path
+    # parents[0] is core, parents[1] is modules, parents[2] is Cortana_Seminar_Project
+    # The / operators append the data folder and cortana.db filename
     Path(__file__).resolve().parents[2] / "data" / "cortana.db"
+    # Finish the expression assigned to DATABASE_PATH
 )
 
+
+# Define a function that opens the database and returns its connection
 def connect():
+    # DATABASE_PATH.parent is the folder containing the database file
+    # mkdir creates that folder
+    # parents=True also creates any missing folders above it
+    # exist_ok=True prevents an error if the folder already exists
     DATABASE_PATH.parent.mkdir(parents=True, exist_ok=True)
 
+    # Open the database file or create it if it does not exist
+    # Save the connection object so we can send SQL commands through it
     connection = sqlite3.connect(DATABASE_PATH)
+
+    # Make retrieved rows support column names such as user["username"]
+    # Rows can still be accessed by numeric position
     connection.row_factory = sqlite3.Row
+
+    # Enable enforcement of foreign key relationships for this connection
+    # Foreign keys connect records across tables such as tasks belonging to users
     connection.execute("PRAGMA foreign_keys = ON")
 
+    # Give the connection back to whichever code called connect()
     return connection
 
 
+# Define a function that creates the initial database structure
 def initialize_database():
+    # Open a connection and refer to it as connection inside this block
+    # On successful completion the block commits any pending transaction
+    # If an exception occurs it rolls back any pending transaction
+    # This with block does not close the connection automatically
     with connect() as connection:
+        # Send a SQL command to the database
+        # Triple quotes begin a string that spans multiple lines
         connection.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY,
@@ -28,3 +61,32 @@ def initialize_database():
                 password_hash TEXT NOT NULL
             )
         """)
+        # CREATE TABLE creates a table named users
+        # IF NOT EXISTS leaves an existing users table untouched
+        # It does not update an existing table to match this definition
+        # The opening parenthesis begins the list of columns
+
+        # id stores a whole number that uniquely identifies each account
+        # INTEGER PRIMARY KEY lets SQLite generate an ID when one is omitted
+
+        # first_name stores text and cannot contain SQL NULL
+        # NOT NULL does not prevent an empty string so Python must check that
+
+        # last_name stores text and cannot contain SQL NULL
+
+        # email stores text and cannot contain SQL NULL
+        # UNIQUE prevents two accounts from having the same stored email value
+
+        # phone stores text to preserve leading zeros
+        # Without NOT NULL this column can contain SQL NULL
+
+        # username stores text and cannot contain SQL NULL
+        # UNIQUE prevents duplicate stored usernames
+        # By default differently capitalized usernames count as different values
+
+        # password_hash stores the encoded password hash rather than the password
+        # It cannot contain SQL NULL
+
+        # The SQL closing parenthesis finishes the list of columns
+        # The closing triple quotes finish the Python string
+        # The final parenthesis finishes the execute() call

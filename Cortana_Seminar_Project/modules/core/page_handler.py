@@ -15,7 +15,7 @@ def discover_page_classes():
 
     discovered: dict[str, type[ctk.CTkFrame]] = {} # "type" because we want to store the class itself, not merely an instance of it
     module_names = [page_package.__name__]
-    
+
     module_names.extend(
         info.name
         for info in pkgutil.walk_packages(
@@ -60,7 +60,7 @@ def initialize_pages():
         page.place_forget()
 
 
-def navigate_to_page(page_title: str):
+def navigate_to_page(page_title: str, refresh: bool = False):
     global current_page
     #print(pages.keys()); 
 
@@ -69,6 +69,10 @@ def navigate_to_page(page_title: str):
     
     if current_page == page_title:
         return
+
+    # If there is a current page, hide it before showing the new one
+    if refresh:
+        refresh_page()
     
     if current_page is not None:
         pages[current_page].place_forget()
@@ -76,3 +80,17 @@ def navigate_to_page(page_title: str):
     pages[page_title].place(x=0, y=0, relwidth=1, relheight=1)
     current_page = page_title
 
+def refresh_page():
+    page = pages.get(current_page)
+    if page is None:
+        return
+
+    # Clear entries inside the page and its nested containers
+    def clear_entries(container):
+        for widget in container.winfo_children():
+            if isinstance(widget, ctk.CTkEntry):
+                widget.delete(0, "end")
+            else:
+                clear_entries(widget)
+
+    clear_entries(page)
