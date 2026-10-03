@@ -24,39 +24,42 @@ def validate_attempt(page: ctk.CTkFrame) -> bool:
 
     if not first_name:
         notification_handler.error_notification(
-            "First name cannot be empty."
+            "I need your first name to go on. You can't leave it blank.",
+            expression="worried"
         )
         return False
 
     if any(char.isdigit() for char in first_name):
         notification_handler.error_notification(
-            "First name cannot contain digits."
+            "Ever seen a first name with numbers in it? Me neither. Please remove any digits."
         )
         return False
     
     if not last_name:
         notification_handler.error_notification(
-            "Last name cannot be empty."
+            "Your last name's just as important as your first. Maybe even more so!"
             )
         return False
 
     if any(char.isdigit() for char in last_name):
         notification_handler.error_notification(
-            "Last name cannot contain digits."
+            "I'd be hard pressed to find a last name with numbers in it. Letters only, please."
             )
         return False
 
     # Validate email address: must be a valid email format
     if not email:
         notification_handler.error_notification(
-            "Email address cannot be empty."
+            "I need your email address to go on. You can't leave it blank.",
+            expression="worried"
         )
         return False
 
     # Validate email using the email_validator library
-    # check_deliverability is set to False to avoid checking if the email domain can receive emails, which will waste time
+    # check_deliverability is set to False to avoid checking if the email domain can receive emails, which can waste time if unnecessary
+    # In our case, I set it to True to ensure the email is deliverable, which is important for account verification and communication
     try:
-        result = validate_email(email, check_deliverability=False)
+        result = validate_email(email, check_deliverability=True)
         email = result.normalized
 
         with database.connect() as connection:
@@ -71,20 +74,22 @@ def validate_attempt(page: ctk.CTkFrame) -> bool:
 
         if existing_email is not None:
             notification_handler.error_notification(
-                "That email address is already registered."
+                "I already have that email on file. Unless you made an account with it, you might want to try another.",
+                expression="worried"
             )
             return False
         
     except EmailNotValidError:
         notification_handler.error_notification(
-            "Please enter a valid email address."
+            "That email doesn't look quite right. Mind checking it for me?",
+            expression="worried"
         )
         return False
     
     # Validate phone number: must be 10 digits, numeric only
     if not phone:
         notification_handler.error_notification(
-            "Phone number cannot be empty."
+            "A number where I can reach you, please. I promise I only call when it matters."
         )
         return False
     
@@ -101,7 +106,7 @@ def validate_attempt(page: ctk.CTkFrame) -> bool:
 
     if not username:
         notification_handler.error_notification(
-            "Username cannot be empty."
+            "I'll need a username from you to create an account."
         )
         return False
 
@@ -119,28 +124,28 @@ def validate_attempt(page: ctk.CTkFrame) -> bool:
     # If the username already exists
     if existing_user is not None:
         notification_handler.error_notification(
-            "That username is already taken."
+            "Someone beat you to that username. Pick another, and make it yours."
         )
         return False
 
     # Require a password
     if not password:
         notification_handler.error_notification(
-            "Password cannot be empty."
+            "I need a password to secure your account! You can't leave it blank."
         )
         return False
 
     # Require at least 8 characters
     if len(password) < 8:
         notification_handler.error_notification(
-            "Password must contain at least 8 characters."
+            "Eight characters minimum. A stronger lock keeps your account safer!",
         )
         return False
 
     # Ensure both passwords match
     if password != confirm_password:
         notification_handler.error_notification(
-            "The inputted passwords don't match! You'd be wise to double-check them."
+            "Those passwords don't match! I promise I won't tell anyone about the typo.",
         )
         return False
     # Validate inputs, then create the account.

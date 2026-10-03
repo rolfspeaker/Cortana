@@ -55,13 +55,13 @@ def create_account(username: str, email: str, phone: str, password: str, first_n
 
     except sqlite3.IntegrityError:
         # Database constraints prevent duplicate accounts
-        return False, "That username or email is already registered."
+        return False, "That username or email is already in my records. Maybe try another?"
 
     except sqlite3.OperationalError:
         # Do not report success when the database could not save
-        return False, "Could not save the account. Please try again."
+        return False, "I couldn't save your account. That's on me, not you. Please try again."
 
-    return True, "Account created successfully! You can now log in."
+    return True, "Account created. Welcome! You can log in now."
 
 
 def log_into_account(username: str, password: str) -> tuple[bool, str]:
@@ -79,12 +79,12 @@ def log_into_account(username: str, password: str) -> tuple[bool, str]:
         ).fetchone()
 
     if account is None:
-        return False, "Account not found."
+        return False, "I can't find that account. Check the spelling, or create a new one."
 
     # Remember this account for the current app session
-    current_account = dict(account)
+    current_account = dict(account) # Comprises id, first_name, last_name, email, phone, username
 
-    return True, "Logged in successfully."
+    return True, "You're in. Good to see you, {}!".format(current_account["first_name"])
 
 
 def log_out_of_account():

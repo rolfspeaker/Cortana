@@ -1,5 +1,6 @@
 import calendar
 from datetime import date
+from types import SimpleNamespace
 
 import customtkinter as ctk
 from PIL import Image, ImageTk
@@ -17,10 +18,11 @@ class HomePage(ctk.CTkFrame):
         self._background = None
         self._last_size = None
 
-        # Reference data until the database is connected
-        self.selected_date = date(2026, 7, 23)
-        self.year = 2026
-        self.month = 7
+        # Start on today with no example account data
+        self.selected_date = date.today()
+        self.year = self.selected_date.year
+        self.month = self.selected_date.month
+        self.tasks_by_date = {}
 
         self.card_color = "#E4ADF0"
         self.accent_color = "#BA7FC7"
@@ -30,6 +32,7 @@ class HomePage(ctk.CTkFrame):
             text="☰",
             width=42,
             height=42,
+            corner_radius=14,
             fg_color="#A25BEF",
             hover_color="#9450DC",
             text_color="white",
@@ -173,9 +176,10 @@ class HomePage(ctk.CTkFrame):
             fg_color="transparent",
             corner_radius=0,
         )
+        self.tasks_card.grid_rowconfigure(1, weight=1)
         self.task_list.grid(
             row=1, column=0, columnspan=2,
-            sticky="ew", padx=16, pady=(0, 18),
+            sticky="nsew", padx=16, pady=(0, 18),
         )
         self.task_list.grid_columnconfigure(0, weight=1)
 
@@ -206,11 +210,7 @@ class HomePage(ctk.CTkFrame):
 
         self.insight_text = ctk.CTkLabel(
             self.insight_card,
-            text=(
-                "You're busiest in the afternoon.\n"
-                'Finish "Math Homework" before Biology '
-                "to stay on schedule."
-            ),
+            text="Insights will appear here as you plan your days.",
             text_color="white",
             anchor="w",
             justify="left",
@@ -236,7 +236,7 @@ class HomePage(ctk.CTkFrame):
 
         self.reminder_text = ctk.CTkLabel(
             self.reminder_card,
-            text="⚠ You have three assignments due within 48 hours.",
+            text="Upcoming reminders will appear here.",
             text_color="white",
             justify="left",
             anchor="w",
@@ -254,6 +254,10 @@ class HomePage(ctk.CTkFrame):
         self.show_tasks()
         self.canvas.bind("<Configure>", self._layout)
         self.canvas.bind("<MouseWheel>", self._scroll)
+        self._bind_scroll(self.calendar_card)
+        self._bind_scroll(self.tasks_card)
+        self._bind_scroll(self.insight_card)
+        self._bind_scroll(self.reminder_card)
 
     def draw_calendar(self):
         for button in self._day_buttons:
@@ -290,6 +294,7 @@ class HomePage(ctk.CTkFrame):
                     row=row, column=column,
                     padx=4, pady=(2, 6),
                 )
+                button.bind("<MouseWheel>", self._scroll, add="+")
                 self._day_buttons.append(button)
 
     def change_month(self, offset):
@@ -297,12 +302,14 @@ class HomePage(ctk.CTkFrame):
         self.year, month_index = divmod(month_index, 12)
         self.month = month_index + 1
         self.draw_calendar()
+        self._reflow()
 
     def select_day(self, day):
         self.selected_date = day
         self.year, self.month = day.year, day.month
         self.draw_calendar()
         self.show_tasks()
+        self._reflow()
 
     def show_tasks(self):
         self.date_label.configure(
@@ -317,11 +324,7 @@ class HomePage(ctk.CTkFrame):
         for widget in self.task_list.winfo_children():
             widget.destroy()
 
-        tasks = [
-            ("Math Homework", "9:00 AM - 10:00 AM", "High"),
-            ("Biology Exam Prep", "2:00 PM - 4:00 PM", "Medium"),
-            ("Read 20 Pages", "7:00 PM - 7:30 PM", "Low"),
-        ] if self.selected_date == date(2026, 7, 23) else []
+        tasks = self.tasks_by_date.get(self.selected_date, [])
 
         if not tasks:
             ctk.CTkLabel(
@@ -392,106 +395,115 @@ class HomePage(ctk.CTkFrame):
                 padx=(10, 14),
             )
 
+    def _reflow(self):
+        self._last_size = None
+        self.after_idle(lambda: self._layout(SimpleNamespace(
+            width=self.canvas.winfo_width(),
+            height=self.canvas.winfo_height(),
+        )))
+
     def _layout(self, event):
         w, h = event.width, event.height
         if w < 2 or h < 2 or self._last_size == (w, h):
             return
         self._last_size = (w, h)
 
-        content_width = min(1100, max(340, w - 64))
-        left = (w - content_width) / 2
+        content_width = min(1100, max(280, w - 64))
+        left = max(16, (w - content_width) / 2)
         gap = 24
-        compact = w < 850
-
+        compact = w < 1000
         c = self.canvas
         c.coords(self._menu_window, left, 28)
+        c.itemconfigure(self._menu_window, width=44, height=44)
         c.coords(self.title, left + 58, 44)
         c.coords(self.subtitle, left + 58, 72)
         c.coords(self._profile_window, left + content_width, 30)
+        c.itemconfigure(self._profile_window, width=44, height=44)
 
-        calendar_width = (
-            content_width if compact else (content_width - gap) * 0.43
-        )
-        tasks_width = (
-            content_width if compact else content_width - calendar_width - gap
-        )
+        calendar_width = content_width if compact else (content_width-gap)*0.43
+        tasks_width = content_width if compact else content_width-calendar_width-gap
+        insight_width = content_width if compact else (content_width-gap)*0.6
+        reminder_width = content_width if compact else content_width-insight_width-gap
 
-        c.coords(self._calendar_window, left, 110)
-        c.itemconfigure(
-            self._calendar_window,
-            width=calendar_width,
-            height=340,
-        )
+        for window, width in (
+            (self._calendar_window, calendar_width),
+            (self._tasks_window, tasks_width),
+            (self._insight_window, insight_width),
+            (self._reminder_window, reminder_width),
+        ):
+            c.itemconfigure(window, width=round(width))
 
-        tasks_x = left if compact else left + calendar_width + gap
-        tasks_y = 474 if compact else 110
-        c.coords(self._tasks_window, tasks_x, tasks_y)
-        c.itemconfigure(
-            self._tasks_window,
-            width=tasks_width,
-            height=340,
-        )
+        # Wrap lengths use CTk logical units while the canvas uses screen pixels
+        scale = self.insight_card._get_widget_scaling()
+        self.insight_text.configure(wraplength=max(140, (insight_width-48)/scale))
+        self.reminder_text.configure(wraplength=max(140, (reminder_width-48)/scale))
+        self.date_label.configure(wraplength=max(140, (tasks_width-160)/scale))
+        self.update_idletasks()
 
-        insights_y = tasks_y + 364
-        insight_width = (
-            content_width if compact else (content_width - gap) * 0.6
-        )
-        reminder_width = (
-            content_width if compact else content_width - insight_width - gap
-        )
+        # Size cards from their content so calendar weeks and text cannot be cut off
+        calendar_height = max(340, self.calendar_card.winfo_reqheight()+20)
+        tasks_height = max(calendar_height, self.tasks_card.winfo_reqheight()+20)
+        if not compact:
+            calendar_height = tasks_height = max(calendar_height, tasks_height)
+        insight_height = max(150, self.insight_card.winfo_reqheight()+12)
+        reminder_height = max(150, self.reminder_card.winfo_reqheight()+12)
+        if not compact:
+            insight_height = reminder_height = max(insight_height, reminder_height)
 
-        c.coords(self._insight_window, left, insights_y)
-        c.itemconfigure(
-            self._insight_window,
-            width=insight_width,
-            height=150,
-        )
+        tasks_x = left if compact else left+calendar_width+gap
+        tasks_y = 110+calendar_height+gap if compact else 110
+        insights_y = tasks_y+tasks_height+gap
+        reminder_x = left if compact else left+insight_width+gap
+        reminder_y = insights_y+insight_height+gap if compact else insights_y
 
-        reminder_x = left if compact else left + insight_width + gap
-        reminder_y = insights_y + 174 if compact else insights_y
-        c.coords(self._reminder_window, reminder_x, reminder_y)
-        c.itemconfigure(
-            self._reminder_window,
-            width=reminder_width,
-            height=150,
-        )
+        for window, x, y, height in (
+            (self._calendar_window, left, 110, calendar_height),
+            (self._tasks_window, tasks_x, tasks_y, tasks_height),
+            (self._insight_window, left, insights_y, insight_height),
+            (self._reminder_window, reminder_x, reminder_y, reminder_height),
+        ):
+            c.coords(window, x, y)
+            c.itemconfigure(window, height=round(height))
 
-        self.insight_text.configure(
-            wraplength=max(180, insight_width - 48)
-        )
-        self.reminder_text.configure(
-            wraplength=max(180, reminder_width - 48)
-        )
+        def background_color(x):
+            t = max(0, min(1, x/max(1, w-1)))
+            return "#" + "".join(f"{round(a+(b-a)*t):02x}" for a, b in
+                                  zip((151, 78, 248), (255, 145, 80)))
 
-        content_height = max(h, reminder_y + 182)
-        c.configure(scrollregion=(0, 0, w, content_height))
+        # Match the area outside each rounded corner to the page gradient
+        for card, x, width in (
+            (self.calendar_card, left, calendar_width),
+            (self.tasks_card, tasks_x, tasks_width),
+            (self.insight_card, left, insight_width),
+            (self.reminder_card, reminder_x, reminder_width),
+        ):
+            lcolor = background_color(x+8)
+            rcolor = background_color(x+width-8)
+            card.configure(bg_color=background_color(x+width/2),
+                           background_corner_colors=(lcolor, rcolor, rcolor, lcolor))
+        self.menu_btn.configure(bg_color=background_color(left+22))
+        self.profile_btn.configure(bg_color=background_color(left+content_width-22))
 
+        content_height = max(h, reminder_y+reminder_height+32)
+        c.configure(scrollregion=(0, 0, max(w, left+content_width+16), content_height))
         gradient = Image.new("RGB", (256, 1))
         gradient.putdata([
-            tuple(
-                round(a + (b - a) * x / 255)
-                for a, b in zip(
-                    (151, 78, 248), (255, 145, 80)
-                )
-            )
+            tuple(round(a+(b-a)*x/255) for a, b in
+                  zip((151, 78, 248), (255, 145, 80)))
             for x in range(256)
         ])
-        gradient = gradient.resize(
-            (w, int(content_height)),
-            Image.Resampling.BILINEAR,
-        )
-
-        self._background = ImageTk.PhotoImage(
-            gradient, master=c
-        )
+        gradient = gradient.resize((w, int(content_height)), Image.Resampling.BILINEAR)
+        self._background = ImageTk.PhotoImage(gradient, master=c)
         c.delete("gradient")
-        c.create_image(
-            0, 0,
-            image=self._background,
-            anchor="nw",
-            tags="gradient",
-        )
+        c.create_image(0, 0, image=self._background, anchor="nw", tags="gradient")
         c.tag_lower("gradient")
+        if content_height <= h:
+            c.yview_moveto(0)
+
+    def _bind_scroll(self, widget):
+        widget.bind("<MouseWheel>", self._scroll, add="+")
+        for child in widget.winfo_children():
+            self._bind_scroll(child)
 
     def _scroll(self, event):
         bounds = self.canvas.cget("scrollregion").split()

@@ -6,16 +6,21 @@ from PIL import Image
 from modules.core import page_handler
 
 
-LOGO_PATH = (
+smile_ICON_PATH = (
     Path(__file__).resolve().parents[2]
     / "images"
-    / "image_logo.png"
+    / "cortana_smile.png"
+)
+worried_ICON_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "images"
+    / "cortana_worried.png"
 )
 
 _active_notifications = {}
 
 
-def _show_notification(message, duration, success):
+def _show_notification(message, duration, success, expression: str = "smile"):
     page = page_handler.pages.get(page_handler.current_page)
 
     if page is None:
@@ -55,9 +60,11 @@ def _show_notification(message, duration, success):
         sticky="ns",
     )
 
-    with Image.open(LOGO_PATH) as source:
+    icon = smile_ICON_PATH if expression == "smile" else worried_ICON_PATH
+
+    with Image.open(icon) as source:
         logo = source.convert("RGBA")
-        logo.thumbnail((64, 64), Image.Resampling.LANCZOS)
+        logo.thumbnail((150, 150), Image.Resampling.LANCZOS)
 
     notification.logo_image = ctk.CTkImage(
         light_image=logo,
@@ -69,8 +76,8 @@ def _show_notification(message, duration, success):
         notification,
         text="",
         image=notification.logo_image,
-        width=64,
-        height=64,
+        width=150,
+        height=150,
         fg_color=background,
     )
     logo_label.grid(
@@ -171,9 +178,9 @@ def _show_notification(message, duration, success):
         timer = notification.after(duration, dismiss)
 
 
-def error_notification(message: str, duration: int = 3000):
-    _show_notification(message, duration, success=False)
+def error_notification(message: str, duration: int = 3000, expression: str = "smile"):
+    _show_notification(message, duration, success=False, expression=expression)
 
 
-def success_notification(message: str, duration: int = 3000):
-    _show_notification(message, duration, success=True)
+def success_notification(message: str, duration: int = 3000, expression: str = "smile"):
+    _show_notification(message, duration, success=True, expression=expression)

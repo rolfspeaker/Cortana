@@ -20,9 +20,16 @@ def validate_attempt(page: type[ctk.CTkFrame]) -> bool:
     password = page.password.get()
 
     # Require both fields
-    if not username or not password:
+    if not username:
         notification_handler.error_notification(
-            "Enter your username and password."
+            "What, you lost your username on the way here? I need it to log you in.",
+            expression="worried"
+        )
+        return False
+
+    if not password:
+        notification_handler.error_notification(
+            "I can't let you in without your password. Security and whatnot, you know?",
         )
         return False
 
@@ -36,22 +43,23 @@ def validate_attempt(page: type[ctk.CTkFrame]) -> bool:
     # Reject an unknown username
     if user is None:
         notification_handler.error_notification(
-            "Incorrect username or password."
+            "That username isn't in my records. Check the spelling, or create a new account."
         )
         return False
 
     # Check the entered password against the stored hash
     try:
         password_hasher.verify(user["password_hash"], password)
+
     except (VerifyMismatchError, VerificationError):
         notification_handler.error_notification(
-            "Incorrect username or password."
+            "Those details don't match anything I have. Check your username and password, and we'll try again.",
+            expression="worried"
         )
         return False
 
     success, message = account_handler.log_into_account(username, password)
     if success:
-        notification_handler.success_notification(message)
-        page_handler.navigate_to_page("home")
+        notification_handler.success_notification(message); page_handler.navigate_to_page("home")
     else:
-        notification_handler.error_notification(message)    
+        notification_handler.error_notification(message, expression="worried")
