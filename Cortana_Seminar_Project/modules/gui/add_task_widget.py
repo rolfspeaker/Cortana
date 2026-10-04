@@ -7,6 +7,9 @@ from pathlib import Path
 import modules.gui.notification as notification_handler
 import customtkinter as ctk
 
+from modules.core.backend import account_handler, task_handler
+import random
+
 # Separate dialog used for both adding and editing tasks
 class AddTaskWidget(ctk.CTkToplevel):
     def __init__(self, master, selected_date, on_submit, task=None, on_delete=None):
@@ -230,12 +233,6 @@ class AddTaskWidget(ctk.CTkToplevel):
                 ["None", "At start time", "15 minutes before", "1 hour before", "1 day before"],
                 "None",
             ),
-            (
-                "repeat",
-                "Repeat",
-                ["Does not repeat", "Daily", "Weekly", "Monthly"],
-                "Does not repeat",
-            ),
         ]
 
         # Build dropdowns in two columns from their definitions
@@ -243,12 +240,19 @@ class AddTaskWidget(ctk.CTkToplevel):
             # Split the field index into a row number and column number
             row, column = divmod(index, 2)
             label_row = 6 + row * 2
+            parent = self.form
+            # Center Reminder across the space formerly shared with Repeat
+            if name == "reminder":
+                parent = ctk.CTkFrame(self.form, fg_color="transparent")
+                parent.grid(row=label_row, column=0, columnspan=2, pady=(16, 0))
+                parent.grid_columnconfigure(0, weight=1)
+                label_row, column = 0, 0
 
             ctk.CTkLabel(
-                self.form,
+                parent,
                 text=label,
                 text_color="white",
-                anchor="w",
+                anchor="center" if name == "reminder" else "w",
                 font=ctk.CTkFont(size=13, weight="bold"),
             ).grid(
                 row=label_row, column=column,
@@ -256,7 +260,8 @@ class AddTaskWidget(ctk.CTkToplevel):
             )
 
             menu = ctk.CTkOptionMenu(
-                self.form,
+                parent,
+                width=280 if name == "reminder" else 140,
                 values=values,
                 height=40,
                 corner_radius=12,
@@ -277,7 +282,7 @@ class AddTaskWidget(ctk.CTkToplevel):
             )
             self.options[name] = menu
 
-        # Validation messages appear here without closing the form (SCRAPPED FOR NOTIFICATIONS)
+        # Keep this label empty because validation uses notification popups
         self.error_label = ctk.CTkLabel(
             self,
             text="",
@@ -300,7 +305,7 @@ class AddTaskWidget(ctk.CTkToplevel):
             hover_color="#F4C9E8",
             text_color="#7135A0",
             font=ctk.CTkFont(size=15, weight="bold"),
-            command=self.submit,
+            command=self.submit if not editing else lambda: self.submit(True),
         )
         self.add_btn.grid(
             row=3, column=0,
@@ -333,59 +338,78 @@ class AddTaskWidget(ctk.CTkToplevel):
 
     def delete_task(self):
         # Remove the task through the home page
-        self.on_delete(self.original_task)
+        # False means saving failed so keep the dialog open
+        if self.on_delete(self.original_task) is False:
+            return
         self.destroy()
 
     # Validate the form and send its data to the supplied callback
-    def submit(self):
+    def submit(self, edited: bool = False):
         # Read the title and remove surrounding whitespace
         title = self.task_title.get().strip()
 
         # Reject an empty title and keep the dialog open
         if not title:
-            notification_handler.error_notification(
+            return notification_handler.error_notification(
                 "Every task needs a name, wouldn't you say? What are we calling this one?",
             )
-            return
 
-        #if 
+        account = account_handler.current_account
 
+        # Only load tasks when someone is signed in
+        if account is not None:
+            tasks = task_handler.load_tasks(account["id"])
+
+            # Each task is a dictionary containing its saved fields
+            for task in tasks:
+                if task["title"] == title and not edited or (edited and task["title"] == title and task != self.original_task):
+                    return notification_handler.error_notification(
+                        "Duplicate task name. You already have one with that title, so pick another.",
+                        expression="worried"
+                    )
+                    
         # Convert the entered date into a date object
         try:
             selected_date = date.fromisoformat(
                 self.task_date.get().strip()
             )
         except ValueError:
-            notification_handler.error_notification(
-                "That date doesn't look right. Try YYYY-MM-DD. Y'know, like, 2026-10-03?",
-                expression="worried"
-            ); return
+            return notification_handler.error_notification(
+                "That date doesn't look right. Make sure you're using YYYY-MM-DD format. Y'know, like, 2026-10-03?",
+                expression="worried",
+                duration=5000
+            ) 
 
-        # Times are optional, but both are required when either is supplied
+        # Times are now mandatory
         start = self.start_time.get().strip()
         end = self.end_time.get().strip()
 
         # Parse supplied times using the 24-hour clock
-        if start or end:
-            try:
-                start_value = datetime.strptime(start, "%H:%M").time()
-                end_value = datetime.strptime(end, "%H:%M").time()
-            except ValueError:
-                notification_handler.error_notification(
-                    "Both times need to be in 24-hour HH:MM format. I run on military time, so bear with me."
-                ); return
+        if not start or not end:
+            return notification_handler.error_notification(
+                "Not so fast, {}! I can't track 'someday', so give me a timeframe to work with, hm?".format(account["first_name"])
+            ) 
 
-            # This form currently supports tasks that finish on the same day
-            if end_value <= start_value:
-                notification_handler.error_notification(
-                    "Your task somehow ends before it starts. I'm flattered that you think I can time travel, but I'm afraid I have limits.",
-                    duration=5000
-                )
-                return
+        try:
+            start_value = datetime.strptime(start, "%H:%M").time()
+            end_value = datetime.strptime(end, "%H:%M").time()
 
-            # Normalize valid times to the same HH:MM format
-            start = start_value.strftime("%H:%M")
-            end = end_value.strftime("%H:%M")
+        except ValueError:
+            return notification_handler.error_notification(
+                "Both times need to be in 24-hour HH:MM format. I run on military time, so bear with me, 'kay?"
+            ) 
+
+        # This form currently supports tasks that finish on the same day
+        if end_value <= start_value:
+            notification_handler.error_notification(
+                "Your task somehow ends before it starts. I'm flattered that you think I can time travel, but I'm afraid I have limits.",
+                duration=6500
+            )
+            return
+
+        # Normalize valid times to the same HH:MM format
+        start = start_value.strftime("%H:%M")
+        end = end_value.strftime("%H:%M")
 
         # Preserve the ID and completion state when editing an existing task
         task = dict(self.original_task or {})
@@ -400,10 +424,13 @@ class AddTaskWidget(ctk.CTkToplevel):
             "priority": self.options["priority"].get(),
             "category": self.options["category"].get(),
             "reminder": self.options["reminder"].get(),
-            "repeat": self.options["repeat"].get(),
+            # Keep the SQL field compatible without offering repeat controls
+            "repeat": "Does not repeat",
         })
 
         # Add or update the task through the callback supplied by HomePage
-        self.on_submit(task)
+        # The home page saves to SQL and returns False if it fails
+        if self.on_submit(task) is False:
+            return
         # Close only after the callback finishes successfully
         self.destroy()

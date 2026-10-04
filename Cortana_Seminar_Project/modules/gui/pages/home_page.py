@@ -1,9 +1,9 @@
-# Build month grids and generate unique task IDs
+# Build month grids and access account-owned task storage
 import calendar
-from uuid import uuid4
+import sqlite3
 
 from modules.gui.add_task_widget import AddTaskWidget
-from modules.core.backend import account_handler
+from modules.core.backend import account_handler, task_handler
 
 # Track dates and supply dimensions when requesting a layout refresh
 from datetime import date, datetime, time, timedelta
@@ -14,8 +14,9 @@ import customtkinter as ctk
 from PIL import Image, ImageTk
 
 import modules.gui.notification as notification_handler
+import random
 
-# Main calendar page with tasks stored in memory for now
+# Main calendar page with tasks saved in SQL and cached for display
 class HomePage(ctk.CTkFrame):
     def __init__(self):
         # Attach this page to the existing app window
@@ -35,8 +36,10 @@ class HomePage(ctk.CTkFrame):
         self.selected_date = date.today()
         self.year = self.selected_date.year
         self.month = self.selected_date.month
-        # Each date maps to a list of complete task dictionaries
+        # This display cache groups saved tasks by date
+        # SQL remains the permanent source when the app restarts
         self.tasks_by_date = {}
+        self._task_user_id = None
 
         # Shared lavender colors for cards and controls
         self.card_color = "#E4ADF0"
@@ -255,6 +258,7 @@ class HomePage(ctk.CTkFrame):
         # Draw initial content and connect resize and scrolling events
         self.draw_calendar()
         self.show_tasks()
+        self.canvas.bind("<Map>", self._on_page_shown, add="+")
         self.canvas.bind("<Configure>", self._layout)
         self.canvas.bind("<MouseWheel>", self._scroll)
         self._bind_scroll(self.calendar_card)
@@ -267,6 +271,10 @@ class HomePage(ctk.CTkFrame):
         for button in self._day_buttons:
             button.destroy()
         self._day_buttons.clear()
+        # Rebuild the legend below the month grid even for six-week months
+        legend = getattr(self, "_priority_legend", None)
+        if legend is not None:
+            legend.destroy()
 
         self.month_label.configure(
             text=f"{calendar.month_name[self.month]} {self.year}"
@@ -277,9 +285,13 @@ class HomePage(ctk.CTkFrame):
             firstweekday=6
         ).monthdatescalendar(self.year, self.month)
 
+        # Compare full dates so past months and years are also blocked
+        today = date.today()
         for row, week in enumerate(weeks, start=2):
             for column, day in enumerate(week):
-                selected = day == self.selected_date
+                past = day < today
+                selected = day == self.selected_date and not past
+                priority_color = self._day_priority_color(day)
 
                 button = ctk.CTkButton(
                     self.calendar_card,
@@ -287,10 +299,13 @@ class HomePage(ctk.CTkFrame):
                     width=34,
                     height=34,
                     corner_radius=17,
-                    fg_color="#FF9150" if selected else "transparent",
+                    fg_color="#FF9150" if selected else priority_color,
                     hover_color=self.accent_color,
+                    # Past dates stay visible but cannot be clicked
+                    state="disabled" if past else "normal",
+                    text_color_disabled="white" if priority_color != "transparent" else "#C18DCF",
                     text_color=(
-                        "white" if day.month == self.month else "#F4D8F9"
+                        "white" if selected or priority_color != "transparent" or day.month == self.month else "#F4D8F9"
                     ),
                     font=ctk.CTkFont(size=13),
                     # Capture this specific date so every button has its own callback
@@ -303,6 +318,38 @@ class HomePage(ctk.CTkFrame):
                 button.bind("<MouseWheel>", self._scroll, add="+")
                 self._day_buttons.append(button)
 
+        # Keep the priority legend centered beneath the final calendar week
+        self._priority_legend = ctk.CTkFrame(self.calendar_card, fg_color="transparent")
+        self._priority_legend.grid(
+            row=len(weeks) + 2, column=0, columnspan=7, pady=(10, 16),
+        )
+        for column, (priority, color) in enumerate(self._priority_colors().items()):
+            ctk.CTkLabel(
+                self._priority_legend, text="●", text_color=color,
+                font=ctk.CTkFont(size=22), width=22,
+            ).grid(row=0, column=column * 2, padx=(8, 3))
+            ctk.CTkLabel(
+                self._priority_legend, text=priority, text_color="white",
+                font=ctk.CTkFont(size=12),
+            ).grid(row=0, column=column * 2 + 1, padx=(0, 8))
+
+    # Use the same colors for both the legend and date highlights
+    @staticmethod
+    def _priority_colors():
+        return {"Low": "#189F9A", "Medium": "#3984ED", "High": "#E34B59"}
+
+    # If several tasks share a day, show the highest priority
+    def _day_priority_color(self, day):
+        ranks = {"Low": 1, "Medium": 2, "High": 3}
+        tasks = self.tasks_by_date.get(day, [])
+        if not tasks:
+            return "transparent"
+        priority = max(
+            (task.get("priority", "Medium") for task in tasks),
+            key=lambda value: ranks.get(value, 2),
+        )
+        return self._priority_colors().get(priority, "#3984ED")
+
     # Move across months and years without special December or January cases
     def change_month(self, offset):
         month_index = self.year * 12 + self.month - 1 + offset
@@ -314,6 +361,9 @@ class HomePage(ctk.CTkFrame):
 
     # Select a date and update its calendar highlight and task list
     def select_day(self, day):
+        # Also reject past dates when another function calls this method
+        if day < date.today():
+            return
         self.selected_date = day
         self.year, self.month = day.year, day.month
         self.draw_calendar()
@@ -355,6 +405,8 @@ class HomePage(ctk.CTkFrame):
                 f'{task["start_time"]} - {task["end_time"]}'
                 if task.get("start_time") else "No time set"
             )
+            # Show the saved category beside the time range
+            details = f'{time} | {task.get("category", "Other")}'
             priority = task["priority"]
             row = ctk.CTkFrame(
                 self.task_list,
@@ -396,7 +448,7 @@ class HomePage(ctk.CTkFrame):
             title_label.bind("<Button-1>", lambda event, record=task: self.edit_task(record))
 
             time_label = ctk.CTkLabel(
-                row, text=time, text_color=self.accent_color, anchor="w",
+                row, text=details, text_color=self.accent_color, anchor="w",
                 font=ctk.CTkFont(size=12), cursor="hand2",
             )
             time_label.grid(row=1, column=1, sticky="ew", pady=(0, 8))
@@ -578,18 +630,33 @@ class HomePage(ctk.CTkFrame):
 
     # Receive a new task from the dialog
     def receive_task(self, task):
-        # Store the complete record once, rather than separate display tuples
-        record = dict(task)
-        # Give the task a stable identity independent of its title or date
-        record["id"] = uuid4().hex
-        record.setdefault("completed", False)
-        # Create a date bucket if missing, then add the task to it
+        try:
+            user_id = self._require_task_account()
+            record = task_handler.create_task(user_id, task)
+        except (sqlite3.Error, ValueError, PermissionError):
+            notification_handler.error_notification(
+                "I couldn't save that task. Please check your account and try again.",
+                expression="worried",
+            )
+            return False
+        # Update the display only after SQL commits successfully
+        # Create the date group if needed and add the saved task
         self.tasks_by_date.setdefault(record["date"], []).append(record)
         self.select_day(record["date"])
 
+        rng = random.randint(1, 4)
+
         notification_handler.success_notification(
-            "Task committed! One less thing for you to worry about.",
+            "Task saved! {}".format("One less thing for you to worry about."
+                if rng == 1 else
+                "One more thing off your mind and onto mine."
+                if rng == 2 else
+                "I'll keep an eye on it so you don't have to."
+                if rng == 3 else
+                "Look at you, getting things done."
+                )
         )
+        return True
 
     # Open the same dialog with existing values and an update callback
     def edit_task(self, task):
@@ -606,57 +673,69 @@ class HomePage(ctk.CTkFrame):
             on_delete=self.delete_task
         )
 
+    # Delete from SQL before removing the displayed task
     def delete_task(self, task):
-        # Find the task by its unique ID
+        try:
+            user_id = self._require_task_account()
+            task_handler.delete_task(user_id, task["id"])
+        except (sqlite3.Error, ValueError, PermissionError):
+            notification_handler.error_notification(
+                "I couldn't delete that task. Please try again.", expression="worried"
+            )
+            return False
+        # list makes a snapshot so empty date groups can be removed safely
         for task_date, tasks in list(self.tasks_by_date.items()):
-            for index, existing in enumerate(tasks):
-                if existing["id"] == task["id"]:
-                    tasks.pop(index)
-
-                    # Remove the empty date bucket
-                    if not tasks:
-                        del self.tasks_by_date[task_date]
-
-                    self.show_tasks()
-                    self._reflow()
-                    return
+            tasks[:] = [existing for existing in tasks if existing["id"] != task["id"]]
+            if not tasks:
+                del self.tasks_by_date[task_date]
+        self.draw_calendar()
+        self.show_tasks()
+        self._reflow()
+        return True
     
     # Replace an existing task rather than creating another one
     def update_task(self, updated_task):
-        # Locate by ID so tasks with identical titles remain independent
-        # Iterate over a snapshot because moving a task can remove a date bucket
-        for old_date, tasks in list(self.tasks_by_date.items()):
-            for index, existing in enumerate(tasks):
-                if existing["id"] != updated_task["id"]:
-                    continue
-                record = dict(existing)
-                # Merge edited fields while keeping unchanged fields such as completion
-                record.update(updated_task)
-                # Replace in place or move the task to its newly selected date
-                if old_date == record["date"]:
-                    tasks[index] = record
-                else:
-                    tasks.pop(index)
-                    if not tasks:
-                        del self.tasks_by_date[old_date]
-                    self.tasks_by_date.setdefault(record["date"], []).append(record)
-                self.select_day(record["date"])
-                notification_handler.success_notification(
-                    "Task updated. Your changes are safe with me, {}!".format(account_handler.current_account["first_name"])
-                )
-                        
-                return
-
-        return notification_handler.error_notification(
-                "No sign of that task anywhere in my record... I'm disappointed, honestly. Check your list and try again.",
-                expression="worried"
+        try:
+            user_id = self._require_task_account()
+            record = task_handler.update_task(user_id, updated_task)
+        except (sqlite3.Error, ValueError, PermissionError):
+            notification_handler.error_notification(
+                "I couldn't save those changes. Your original task is still there.",
+                expression="worried",
             )
+            return False
+        # Remove the old cached version, including when its date changed
+        for old_date, tasks in list(self.tasks_by_date.items()):
+            tasks[:] = [task for task in tasks if task["id"] != record["id"]]
+            if not tasks:
+                del self.tasks_by_date[old_date]
+        # Create the date group if needed and add the saved task
+        self.tasks_by_date.setdefault(record["date"], []).append(record)
+        self.select_day(record["date"])
+        notification_handler.success_notification(
+            "Task updated. Your changes are saved!"
+        )
+        return True
 
     # Flip completion between True and False
     def toggle_task(self, task):
-        task["completed"] = not task.get("completed", False)
+        completed = not task.get("completed", False)
+        try:
+            user_id = self._require_task_account()
+            task_handler.set_completed(user_id, task["id"], completed)
+        except (sqlite3.Error, ValueError, PermissionError):
+            # Restore the checkbox if the SQL update fails
+            self.show_tasks()
+            self._reflow()
+            notification_handler.error_notification(
+                "I couldn't save that checkbox change. Please try again.",
+                expression="worried",
+            )
+            return False
+        task["completed"] = completed
         self.show_reminders()
         self._reflow()
+        return True
 
     # Find the next three unfinished tasks across all calendar dates
     def upcoming_tasks(self, now=None):
@@ -675,7 +754,9 @@ class HomePage(ctk.CTkFrame):
                 )
                 if now <= deadline <= cutoff:
                     candidates.append((deadline, task))
+        # Sort by deadline and use the title to break ties
         candidates.sort(key=lambda item: (item[0], item[1]["title"]))
+        # Limit the reminder panel to the three soonest tasks
         return candidates[:3]
 
     # Populate the reminder panel without adding any sample tasks
@@ -697,6 +778,7 @@ class HomePage(ctk.CTkFrame):
 
     # Refresh the panel as time passes even without user interaction
     def _refresh_reminder_clock(self):
+        self._sync_task_account()
         self.show_reminders()
         self._reflow()
         self._reminder_timer = self.after(60000, self._refresh_reminder_clock)
@@ -708,3 +790,45 @@ class HomePage(ctk.CTkFrame):
             self.after_cancel(timer)
             self._reminder_timer = None
         super().destroy()
+
+    # Load only the signed-in account's persisted tasks
+    def load_tasks(self):
+        account = account_handler.current_account
+        user_id = account["id"] if account is not None else None
+        # Clear previous account data before attempting a new load
+        self.tasks_by_date = {}
+        self._task_user_id = None
+        if user_id is not None:
+            records = task_handler.load_tasks(user_id)
+            for task in records:
+                self.tasks_by_date.setdefault(task["date"], []).append(task)
+            self._task_user_id = user_id
+        self.selected_date = date.today()
+        self.year, self.month = self.selected_date.year, self.selected_date.month
+        self.draw_calendar()
+        self.show_tasks()
+        self._reflow()
+
+    # Prevent a stale dialog from writing to a different account
+    def _require_task_account(self):
+        account = account_handler.current_account
+        if account is None or account["id"] != self._task_user_id:
+            raise PermissionError("Sign into the account that owns this task list")
+        return account["id"]
+
+    # Discard another account's cached tasks after logout or account switching
+    def _sync_task_account(self):
+        account = account_handler.current_account
+        user_id = account["id"] if account is not None else None
+        if user_id != self._task_user_id:
+            try:
+                self.load_tasks()
+            except (sqlite3.Error, ValueError):
+                self.tasks_by_date = {}
+                self._task_user_id = None
+                self.show_tasks()
+                self._reflow()
+
+    # Check the active account after Tk finishes showing the page
+    def _on_page_shown(self, event):
+        self.after_idle(self._sync_task_account)

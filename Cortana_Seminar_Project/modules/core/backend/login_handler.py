@@ -1,6 +1,7 @@
 # Backend logic for the login page 
 # This module handles the validation of user input and the authentication of existing users
 
+import sqlite3
 import customtkinter as ctk
 from contextlib import closing
 
@@ -16,6 +17,7 @@ from modules.core import page_handler
 password_hasher = PasswordHasher()
 
 def validate_attempt(page: type[ctk.CTkFrame]) -> bool:
+    # Remove extra username spaces but preserve the exact password
     username = page.username.get().strip()
     password = page.password.get()
 
@@ -53,13 +55,30 @@ def validate_attempt(page: type[ctk.CTkFrame]) -> bool:
 
     except (VerifyMismatchError, VerificationError):
         notification_handler.error_notification(
-            "That's not the right password! You didn't forget it, did you?",
+            "That's not the right password. You didn't forget it, did you?",
             expression="worried"
         )
         return False
 
+    # Establish the signed-in account after the password has been verified
     success, message = account_handler.log_into_account(username, password)
-    if success:
-        notification_handler.success_notification(message); page_handler.navigate_to_page("home")
-    else:
+    if not success:
         notification_handler.error_notification(message, expression="worried")
+        return False
+
+    # Load this account's tasks before displaying the home page
+    try:
+        page_handler.pages["home"].load_tasks()
+    except (sqlite3.Error, ValueError):
+        # Clear the session if its task data could not be loaded
+        account_handler.log_out_of_account()
+        notification_handler.error_notification(
+            "I couldn't load your tasks. Please try logging in again.",
+            expression="worried",
+        )
+        return False
+
+    # Show the home page only after login and task loading succeed
+    page_handler.navigate_to_page("home")
+    notification_handler.success_notification(message)
+    return True

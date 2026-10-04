@@ -44,7 +44,7 @@ def connect():
 
 # Define a function that creates the initial database structure
 def initialize_database():
-# Close the connection when initialization finishes
+    # Close the connection when initialization finishes
     with closing(connect()) as connection:
         # Commit changes on success or roll them back on failure
         with connection:
@@ -80,6 +80,12 @@ def initialize_database():
                     FOREIGN KEY (user_id) REFERENCES users(id)
                         ON DELETE CASCADE
                 )
+            """)
+
+        # Speed up finding an account's tasks by date
+            connection.execute("""
+                CREATE INDEX IF NOT EXISTS tasks_owner_date
+                ON tasks(user_id, task_date)
             """)
         # CREATE TABLE creates a table named users
         # IF NOT EXISTS leaves an existing users table untouched
