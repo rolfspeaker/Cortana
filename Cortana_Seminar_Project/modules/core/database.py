@@ -3,6 +3,7 @@ import sqlite3
 
 # Import Path to build and work with file and folder paths
 from pathlib import Path
+from contextlib import closing
 
 # Store the database file's location
 # The opening parenthesis lets this expression continue onto another line
@@ -43,24 +44,43 @@ def connect():
 
 # Define a function that creates the initial database structure
 def initialize_database():
-    # Open a connection and refer to it as connection inside this block
-    # On successful completion the block commits any pending transaction
-    # If an exception occurs it rolls back any pending transaction
-    # This with block does not close the connection automatically
-    with connect() as connection:
-        # Send a SQL command to the database
-        # Triple quotes begin a string that spans multiple lines
-        connection.execute("""
-            CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY,
-                first_name TEXT NOT NULL,
-                last_name TEXT NOT NULL,
-                email TEXT NOT NULL UNIQUE,
-                phone TEXT,
-                username TEXT NOT NULL UNIQUE,
-                password_hash TEXT NOT NULL
-            )
-        """)
+# Close the connection when initialization finishes
+    with closing(connect()) as connection:
+        # Commit changes on success or roll them back on failure
+        with connection:
+            # Store user accounts
+            connection.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    id INTEGER PRIMARY KEY,
+                    first_name TEXT NOT NULL,
+                    last_name TEXT NOT NULL,
+                    email TEXT NOT NULL UNIQUE,
+                    phone TEXT,
+                    username TEXT NOT NULL UNIQUE,
+                    password_hash TEXT NOT NULL
+                )
+            """)
+
+            # Store tasks linked to their owning account
+            connection.execute("""
+                CREATE TABLE IF NOT EXISTS tasks (
+                    id TEXT PRIMARY KEY NOT NULL,
+                    user_id INTEGER NOT NULL,
+                    title TEXT NOT NULL,
+                    description TEXT NOT NULL DEFAULT '',
+                    task_date TEXT NOT NULL,
+                    start_time TEXT NOT NULL DEFAULT '',
+                    end_time TEXT NOT NULL DEFAULT '',
+                    priority TEXT NOT NULL,
+                    category TEXT NOT NULL,
+                    reminder TEXT NOT NULL,
+                    repeat TEXT NOT NULL,
+                    completed INTEGER NOT NULL DEFAULT 0
+                        CHECK (completed IN (0, 1)),
+                    FOREIGN KEY (user_id) REFERENCES users(id)
+                        ON DELETE CASCADE
+                )
+            """)
         # CREATE TABLE creates a table named users
         # IF NOT EXISTS leaves an existing users table untouched
         # It does not update an existing table to match this definition

@@ -1,6 +1,8 @@
 import customtkinter as ctk
 from PIL import Image, ImageTk
 
+from pathlib import Path
+
 from modules.core import page_handler
 from modules.core.backend import login_handler
 
@@ -47,7 +49,10 @@ class LoginPage(ctk.CTkFrame):
             fg_color="#C770A4",
             bg_color="#C770A4",
             text_color="white",
-            font=ctk.CTkFont(size=14),
+                font=ctk.CTkFont(
+                family="Segoe UI",
+                size=14
+            ),
         )
         self.password = ctk.CTkEntry(
             self.canvas,
@@ -58,9 +63,14 @@ class LoginPage(ctk.CTkFrame):
             fg_color="#C770A4",
             bg_color="#C770A4",
             text_color="white",
-            font=ctk.CTkFont(size=14),
+            font=ctk.CTkFont(
+                family="Segoe UI",
+                size=14
+            ),
             show="*",
         )
+
+        
 
         self._username_window = self.canvas.create_window(
             0, 0, window=self.username, anchor="nw"
@@ -68,7 +78,31 @@ class LoginPage(ctk.CTkFrame):
         self._password_window = self.canvas.create_window(
             0, 0, window=self.password, anchor="nw"
         )
+        self.toggle_btn = ctk.CTkButton(
+            self.password,
+            text="Show",
+            width=22,
+            height=22,
+            corner_radius=8,
+            fg_color="#C770A4",
+            text_color="#653081",
+            hover_color="#C770A4",
+            bg_color="#C770A4",
+            command=self._toggle_password_visibility,
+            font=ctk.CTkFont(
+                family="Consolas",
+                underline=True,
+                size=14
+            ),
+        )
 
+        self.toggle_btn.place(
+            relx=1,
+            rely=0.5,
+            x=-4,
+            anchor="e",
+        )
+        
         self.login_btn = ctk.CTkButton(
             self.canvas,
             text="Login",
@@ -120,6 +154,12 @@ class LoginPage(ctk.CTkFrame):
 
         self.canvas.bind("<Configure>", self._layout)
         self.canvas.bind("<MouseWheel>", self._scroll)
+
+    def _toggle_password_visibility(self):
+        if self.password.cget("show") == "*":
+            self.password.configure(show=""); self.toggle_btn.configure(text="Hide")
+        else:
+            self.password.configure(show="*"); self.toggle_btn.configure(text="Show")
 
     def _layout(self, event):
         w, h = event.width, event.height

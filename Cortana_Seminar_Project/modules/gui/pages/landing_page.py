@@ -39,7 +39,7 @@ def build_landing_page(app):
 
     last_size = [None, None]
 
-    logo_path = Path(__file__).resolve().parents[3] / "images" / "image_logo.png"
+    logo_path = Path(__file__).resolve().parents[3] / "images" / "cortana_from_halo.png"
     with Image.open(logo_path) as logo_source:
         logo_image = logo_source.convert("RGBA")
 

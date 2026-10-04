@@ -110,6 +110,8 @@ def validate_attempt(page: ctk.CTkFrame) -> bool:
         )
         return False
 
+    first_name.capitalize(); last_name.capitalize();
+
     # Open a database connection
     with database.connect() as connection:
         # Find an account with this username

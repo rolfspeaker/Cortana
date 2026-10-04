@@ -29,7 +29,7 @@ def validate_attempt(page: type[ctk.CTkFrame]) -> bool:
 
     if not password:
         notification_handler.error_notification(
-            "I can't let you in without your password. Security and whatnot, you know?",
+            "I can't let you in without your password. Security concerns, y'know?",
         )
         return False
 
@@ -53,7 +53,7 @@ def validate_attempt(page: type[ctk.CTkFrame]) -> bool:
 
     except (VerifyMismatchError, VerificationError):
         notification_handler.error_notification(
-            "Those details don't match anything I have. Check your username and password, and we'll try again.",
+            "That's not the right password! You didn't forget it, did you?",
             expression="worried"
         )
         return False
