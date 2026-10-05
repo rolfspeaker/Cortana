@@ -9,6 +9,7 @@ import customtkinter as ctk
 
 from modules.core.backend import account_handler, task_handler
 import random
+from modules.utility.time_format import parse_time, format_time
 
 # Separate dialog used for both adding and editing tasks
 class AddTaskWidget(ctk.CTkToplevel):
@@ -190,7 +191,7 @@ class AddTaskWidget(ctk.CTkToplevel):
         self.start_time = ctk.CTkEntry(
             time_frame,
             width=90,
-            placeholder_text="09:00",
+            placeholder_text="9:00 AM",
             height=40,
             corner_radius=12,
             border_width=0,
@@ -204,7 +205,7 @@ class AddTaskWidget(ctk.CTkToplevel):
         self.end_time = ctk.CTkEntry(
             time_frame,
             width=90,
-            placeholder_text="10:00",
+            placeholder_text="10:00 AM",
             height=40,
             corner_radius=12,
             border_width=0,
@@ -319,8 +320,8 @@ class AddTaskWidget(ctk.CTkToplevel):
             self.description.insert("1.0", task.get("description", ""))
             self.task_date.delete(0, "end")
             self.task_date.insert(0, task["date"].isoformat())
-            self.start_time.insert(0, task.get("start_time", ""))
-            self.end_time.insert(0, task.get("end_time", ""))
+            self.start_time.insert(0, format_time(task.get("start_time", "")))
+            self.end_time.insert(0, format_time(task.get("end_time", "")))
             for name, menu in self.options.items():
                 menu.set(task.get(name, menu.get()))
 
@@ -352,6 +353,7 @@ class AddTaskWidget(ctk.CTkToplevel):
         if not title:
             return notification_handler.error_notification(
                 "Every task needs a name, wouldn't you say? What are we calling this one?",
+                voiceclip=(True, "i_dont_think_so"), 
             )
 
         account = account_handler.current_account
@@ -365,7 +367,8 @@ class AddTaskWidget(ctk.CTkToplevel):
                 if task["title"] == title and not edited or (edited and task["title"] == title and task != self.original_task):
                     return notification_handler.error_notification(
                         "Duplicate task name. You already have one with that title, so pick another.",
-                        expression="worried"
+                        expression="worried",
+                        voiceclip=(True, "you_sure"), 
                     )
                     
         # Convert the entered date into a date object
@@ -377,37 +380,54 @@ class AddTaskWidget(ctk.CTkToplevel):
             return notification_handler.error_notification(
                 "That date doesn't look right. Make sure you're using YYYY-MM-DD format. Y'know, like, 2026-10-03?",
                 expression="worried",
-                duration=5000
+                duration=5000,
+                voiceclip=(True, "use_my_help"), 
             ) 
 
         # Times are now mandatory
         start = self.start_time.get().strip()
         end = self.end_time.get().strip()
 
-        # Parse supplied times using the 24-hour clock
+        # Require both times with AM or PM
         if not start or not end:
             return notification_handler.error_notification(
-                "Not so fast, {}! I can't track 'someday', so give me a timeframe to work with, hm?".format(account["first_name"])
+                "Not so fast! I can't track 'someday', so give me a timeframe to work with, hm?",
+                voiceclip=(True, "efficient"), 
             ) 
 
         try:
-            start_value = datetime.strptime(start, "%H:%M").time()
-            end_value = datetime.strptime(end, "%H:%M").time()
+            start_value = parse_time(start)
+            end_value = parse_time(end)
 
         except ValueError:
+            rng = random.randint(1,4)
+            
             return notification_handler.error_notification(
-                "Both times need to be in 24-hour HH:MM format. I run on military time, so bear with me, 'kay?"
+                "I work with standard time format, so 9:00 AM and 2:30 PM, for example. {}".format(
+                    "Precision's my thing."
+                    if rng == 1 else
+                    "Not sure if you've noticed, but I'm pretty big on precision."
+                    if rng == 2 else
+                    "Once you've got that, you can leave the rest to me."
+                    if rng == 3 else
+                    "Help me help you!"
+                ),
+                voiceclip=(True, "use_my_help"), 
+                request_id="standard_time_error",
+                duration=6500
             ) 
 
         # This form currently supports tasks that finish on the same day
         if end_value <= start_value:
             notification_handler.error_notification(
                 "Your task somehow ends before it starts. I'm flattered that you think I can time travel, but I'm afraid I have limits.",
-                duration=6500
+                duration=6500,
+                voiceclip=(True, "you_sure")
             )
             return
 
-        # Normalize valid times to the same HH:MM format
+        # Save HH:MM internally so SQL, sorting and reminders remain compatible
+        # The form and task cards display the AM/PM version instead
         start = start_value.strftime("%H:%M")
         end = end_value.strftime("%H:%M")
 

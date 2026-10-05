@@ -4,6 +4,7 @@ import customtkinter as ctk
 from PIL import Image
 
 from modules.core import page_handler
+from modules.utility import sound_service
 
 
 smile_ICON_PATH = (
@@ -16,12 +17,24 @@ worried_ICON_PATH = (
     / "images"
     / "cortana_worried.png"
 )
+stunned_ICON_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "images"
+    / "cortana_stunned.png"
+)
 
 _active_notifications = {}
-_current_message: str | None = None
+# Keep each window's popup identity separate to reject repeated clicks
+_active_requests = {}
 
-def _show_notification(message, duration, success, expression: str = "smile"):
-    global _current_message
+_active_id: str | None = None
+
+def _show_notification(
+    message, duration, success, expression: str = "smile",
+    *, prompt=False, on_yes=None, on_no=None, notification_id: str | None = None,
+    voiceline: tuple[bool, str] | None = None
+):  
+    global _active_id
     page = page_handler.pages.get(page_handler.current_page)
 
     if page is None:
@@ -29,21 +42,35 @@ def _show_notification(message, duration, success, expression: str = "smile"):
 
     master = page.winfo_toplevel()
     
+    request = (message, "prompt" if prompt else "success" if success else "error", expression)
     previous = _active_notifications.get(master)
+
     if previous is not None:
-        # If the requested notification bears the same message as the active notification, reject the request
-        if _current_message == message: 
+        same_request = _active_requests.get(master) == request
+        same_id = (notification_id is not None and _active_id == notification_id)
+
+        if same_request or same_id:
             return
-        # If the requested notification has a different message, then delete the active notification in favor of the incoming notification
-        else: 
-            previous()
-    
-    
-    _current_message = message
+
+        previous()
+
+    # Play Cortana voiceline
+    try:
+        enabled, audio_name = voiceline
+
+        if not audio_name:
+            audio_name = "generic_1"
+
+        sound_service.play_voiceline(audio_name)
+
+    except TypeError:
+        pass
+
+    _active_id = notification_id
 
     background = "#FFE5F5"
-    accent = "#974EF8" if success else "#FF9150"
-    heading = "Notification" if success else "Error"
+    accent = "#3984ED" if prompt else "#974EF8" if success else "#FF9150"
+    heading = "Confirmation" if prompt else "Notification" if success else "Error"
 
     notification = ctk.CTkFrame(
         master,
@@ -67,7 +94,7 @@ def _show_notification(message, duration, success, expression: str = "smile"):
         sticky="ns",
     )
 
-    icon = smile_ICON_PATH if expression == "smile" else worried_ICON_PATH
+    icon = smile_ICON_PATH if expression == "smile" else worried_ICON_PATH if expression == "worried" else stunned_ICON_PATH
 
     with Image.open(icon) as source:
         cortana_icon = source.convert("RGBA")
@@ -168,12 +195,16 @@ def _show_notification(message, duration, success, expression: str = "smile"):
         pady=(40, 0),
     )
 
-        # No automatic dismissal has been scheduled yet
+    # Prompts wait for a choice while other popups can use a timer
     timer = None
+    closed = False
 
     def dismiss():
         # Allow this function to change the timer variable above
-        nonlocal timer
+        nonlocal timer, closed
+        if closed:
+            return
+        closed = True
 
         # Cancel any scheduled dismissal
         if timer is not None:
@@ -183,9 +214,38 @@ def _show_notification(message, duration, success, expression: str = "smile"):
         # Remove this popup from the registry only if it is still the active one
         if _active_notifications.get(master) is dismiss:
             del _active_notifications[master]
+            _active_requests.pop(master, None)
 
         # Remove the popup from the screen
         notification.destroy()
+
+    def choose(accepted):
+        # Dismiss before calling the action and ignore any repeated clicks
+        if closed:
+            return
+        dismiss()
+        callback = on_yes if accepted else on_no
+        if callback is not None:
+            callback()
+
+    if prompt:
+        buttons = ctk.CTkFrame(text_frame, fg_color=background, corner_radius=0)
+        buttons.grid(row=3, column=0, sticky="ew", pady=(18, 0))
+        buttons.grid_columnconfigure((0, 1), weight=1)
+
+        ctk.CTkButton(
+            buttons, text="Yes", height=36, corner_radius=12,
+            fg_color="transparent", hover=False, text_color="#7135A0",
+            font=ctk.CTkFont(size=14, weight="bold", family="Consolas"),
+            command=lambda: choose(True),
+        ).grid(row=0, column=0, sticky="ew", padx=(0, 6))
+
+        ctk.CTkButton(
+            buttons, text="On second thought...", height=36, corner_radius=12,
+            fg_color="transparent", hover=False, text_color="#FF9150",
+            font=ctk.CTkFont(size=14, weight="bold", family="Consolas"),
+            command=lambda: choose(False),
+        ).grid(row=0, column=1, sticky="ew", padx=(6, 0))
 
     close_btn = ctk.CTkButton(
         notification,
@@ -198,7 +258,8 @@ def _show_notification(message, duration, success, expression: str = "smile"):
         hover_color="#F4C9E8",
         text_color="#7135A0",
         font=ctk.CTkFont(size=22),
-        command=dismiss,
+        # Closing a prompt has the same result as choosing No
+        command=(lambda: choose(False)) if prompt else dismiss,
     )
     close_btn.grid(
         row=0,
@@ -208,6 +269,8 @@ def _show_notification(message, duration, success, expression: str = "smile"):
         pady=(12, 0),
     )
     
+    # Measure the complete popup before showing it to reduce layout flashes
+    notification.update_idletasks()
     notification.place(
         relx=1,
         rely=1,
@@ -218,18 +281,34 @@ def _show_notification(message, duration, success, expression: str = "smile"):
     notification.lift()
 
     _active_notifications[master] = dismiss
+    _active_requests[master] = request
 
-    if duration > 0:
+    if duration > 0 and not prompt:
         timer = notification.after(duration, dismiss)
 
 
-def error_notification(message: str, duration: int = 3000, expression: str = "smile"):
+def error_notification(message: str, duration: int = 3000, expression: str = "smile",
+    request_id: str | None = None, voiceclip: tuple[bool, str] | None = None):
     _show_notification(
-        message, duration, success=False, expression=expression
+        message, duration, success=False, expression=expression, notification_id=request_id,
+        voiceline=voiceclip
     )
 
 
-def success_notification(message: str, duration: int = 3000, expression: str = "smile"):
+def success_notification(message: str, duration: int = 3000, expression: str = "smile",
+    request_id: str | None = None, voiceclip: tuple[bool, str] | None = None):
     _show_notification(
-        message, duration, success=True, expression=expression
+        message, duration, success=True, expression=expression, notification_id=request_id,
+        voiceline=voiceclip
     )
+    sound_service.play_sfx("notification", volume=.2)
+
+def prompt_notification(message: str, on_yes, on_no=None, expression: str = "smile",
+    request_id: str | None = None, voiceclip: tuple[bool, str] | None = None):
+    # Use callbacks because the GUI must keep running while awaiting a choice
+    _show_notification(
+        message, duration=0, success=False, expression=expression,
+        prompt=True, on_yes=on_yes, on_no=on_no, notification_id=request_id,
+        voiceline=voiceclip
+    )
+    

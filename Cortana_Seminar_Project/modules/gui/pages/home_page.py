@@ -4,6 +4,7 @@ import sqlite3
 
 from modules.gui.add_task_widget import AddTaskWidget
 from modules.core.backend import account_handler, task_handler
+from modules.core import page_handler
 
 # Track dates and supply dimensions when requesting a layout refresh
 from datetime import date, datetime, time, timedelta
@@ -15,6 +16,7 @@ from PIL import Image, ImageTk
 
 import modules.gui.notification as notification_handler
 import random
+from modules.utility.time_format import format_time
 
 # Main calendar page with tasks saved in SQL and cached for display
 class HomePage(ctk.CTkFrame):
@@ -93,6 +95,24 @@ class HomePage(ctk.CTkFrame):
         )
         self._profile_window = self.canvas.create_window(
             0, 0, window=self.profile_btn, anchor="ne"
+        )
+
+        # Log out without deleting any saved accounts or tasks
+        self.logout_btn = ctk.CTkButton(
+            self.canvas,
+            text="Log Out",
+            width=100,
+            height=40,
+            corner_radius=16,
+            fg_color="#FFE5F5",
+            hover_color="#F4C9E8",
+            text_color="#7135A0",
+            font=ctk.CTkFont(size=10, weight="bold"),
+            command=self.log_out,
+        )
+
+        self._logout_window = self.canvas.create_window(
+            0, 0, window=self.logout_btn, anchor="ne"
         )
 
         # Calendar card with seven equally sized weekday columns
@@ -402,7 +422,7 @@ class HomePage(ctk.CTkFrame):
         for index, task in enumerate(tasks):
             title = task["title"]
             time = (
-                f'{task["start_time"]} - {task["end_time"]}'
+                f'{format_time(task["start_time"])} - {format_time(task["end_time"])}'
                 if task.get("start_time") else "No time set"
             )
             # Show the saved category beside the time range
@@ -494,6 +514,12 @@ class HomePage(ctk.CTkFrame):
         c.coords(self.subtitle, left + 58, 72)
         c.coords(self._profile_window, left + content_width, 30)
         c.itemconfigure(self._profile_window, width=44, height=44)
+        # Move Log Out below the title in narrow windows to prevent overlap
+        narrow_header = w < 620
+        logout_right = left + content_width - (0 if narrow_header else 60)
+        c.coords(self._logout_window, logout_right, 82 if narrow_header else 32)
+        c.itemconfigure(self._logout_window, width=100, height=40)
+        cards_top = 146 if narrow_header else 110
 
         calendar_width = content_width if compact else (content_width-gap)*0.43
         tasks_width = content_width if compact else content_width-calendar_width-gap
@@ -524,12 +550,12 @@ class HomePage(ctk.CTkFrame):
 
         # Calculate each card position using the space occupied by previous cards
         tasks_x = left if compact else left+calendar_width+gap
-        tasks_y = 110+calendar_height+gap if compact else 110
+        tasks_y = cards_top+calendar_height+gap if compact else cards_top
         reminder_x = left
         reminder_y = tasks_y+tasks_height+gap
 
         for window, x, y, height in (
-            (self._calendar_window, left, 110, calendar_height),
+            (self._calendar_window, left, cards_top, calendar_height),
             (self._tasks_window, tasks_x, tasks_y, tasks_height),
             (self._reminder_window, reminder_x, reminder_y, reminder_height),
         ):
@@ -554,6 +580,7 @@ class HomePage(ctk.CTkFrame):
                            background_corner_colors=(lcolor, rcolor, rcolor, lcolor))
         self.menu_btn.configure(bg_color=background_color(left+22))
         self.profile_btn.configure(bg_color=background_color(left+content_width-22))
+        self.logout_btn.configure(bg_color=background_color(logout_right-50))
 
         # Extend the scrollable area when the cards exceed the visible window
         content_height = max(h, reminder_y+reminder_height+32)
@@ -602,6 +629,38 @@ class HomePage(ctk.CTkFrame):
             )
             # Stop other bindings from processing this scroll event
             return "break"
+
+    def log_out(self):
+        # Only perform logout after the user chooses Yes
+        rng: int = random.randint(1, 4)
+
+        notification_handler.prompt_notification(
+            "{}".format(
+                "Are you sure you want to log out?"
+                if rng == 1 else
+                "Leaving already? Promise me you won't be gone for too long. I'll notice!"
+                if rng == 2 else
+                "Ready to sign out? I'll keep everything in order until you're back."
+                if rng == 3 else
+                "You leaving? Your plans are safe with me, either way."
+            ),
+            voiceclip=(True, "its_been_an_honor"), 
+            on_yes=self._confirm_log_out,
+            expression="worried" if rng != 3 and rng != 4 else "smile",
+            request_id="sign_out"
+        )
+
+    def _confirm_log_out(self):
+        # Close any task editor before ending the account session
+        dialog = getattr(self, "_add_task_dialog", None)
+        if dialog is not None and dialog.winfo_exists():
+            dialog.destroy()
+        self._add_task_dialog = None
+
+        # Clear the active account and its display cache while preserving SQL data
+        account_handler.log_out_of_account()
+        self.load_tasks()
+        page_handler.navigate_to_page("login")
 
     # Placeholder for the future navigation menu
     def open_menu(self):
@@ -654,7 +713,9 @@ class HomePage(ctk.CTkFrame):
                 "I'll keep an eye on it so you don't have to."
                 if rng == 3 else
                 "Look at you, getting things done."
-                )
+                ),
+            voiceclip=(True, "compliment"), 
+            request_id="task_saved"
         )
         return True
 
@@ -680,7 +741,8 @@ class HomePage(ctk.CTkFrame):
             task_handler.delete_task(user_id, task["id"])
         except (sqlite3.Error, ValueError, PermissionError):
             notification_handler.error_notification(
-                "I couldn't delete that task. Please try again.", expression="worried"
+                "I couldn't delete that task. Please try again.", expression="worried",
+                voiceclip=(True, "apologize"), 
             )
             return False
         # list makes a snapshot so empty date groups can be removed safely
@@ -713,7 +775,8 @@ class HomePage(ctk.CTkFrame):
         self.tasks_by_date.setdefault(record["date"], []).append(record)
         self.select_day(record["date"])
         notification_handler.success_notification(
-            "Task updated. Your changes are saved!"
+            "Task updated. Your changes are saved!",
+            voiceclip=(True, "alright"), 
         )
         return True
 
@@ -723,13 +786,14 @@ class HomePage(ctk.CTkFrame):
         try:
             user_id = self._require_task_account()
             task_handler.set_completed(user_id, task["id"], completed)
+
         except (sqlite3.Error, ValueError, PermissionError):
             # Restore the checkbox if the SQL update fails
             self.show_tasks()
             self._reflow()
             notification_handler.error_notification(
                 "I couldn't save that checkbox change. Please try again.",
-                expression="worried",
+                expression="worried"
             )
             return False
         task["completed"] = completed
@@ -769,7 +833,7 @@ class HomePage(ctk.CTkFrame):
             for deadline, task in upcoming:
                 due = f"{deadline:%a, %b} {deadline.day}"
                 if task.get("end_time") or task.get("start_time"):
-                    due += f" at {deadline:%H:%M}"
+                    due += f" at {format_time(deadline.strftime('%H:%M'))}"
                 else:
                     due += " · All day"
                 lines.append(f"• {task['title']} — {due}")

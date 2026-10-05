@@ -31,7 +31,8 @@ def validate_attempt(page: ctk.CTkFrame) -> bool:
 
     if any(char.isdigit() for char in first_name):
         notification_handler.error_notification(
-            "Ever seen a first name with numbers in it? Me neither. Please remove any digits."
+            "Ever seen a first name with numbers in it? Me neither. Please remove any digits.",
+            voiceclip=(True, "i_think_we_both_know"),
         )
         return False
     
@@ -43,7 +44,8 @@ def validate_attempt(page: ctk.CTkFrame) -> bool:
 
     if any(char.isdigit() for char in last_name):
         notification_handler.error_notification(
-            "I'd be hard pressed to find a last name with numbers in it. Letters only, please."
+            "I'd be hard pressed to find a last name with numbers in it. Letters only, please.",
+            voiceclip=(True, "i_think_we_both_know"),
             )
         return False
 
@@ -89,7 +91,8 @@ def validate_attempt(page: ctk.CTkFrame) -> bool:
     # Validate phone number: must be 10 digits, numeric only
     if not phone:
         notification_handler.error_notification(
-            "A number where I can reach you, please. I promise I only call when it matters."
+            "A number where I can reach you, please. I promise I only call when it matters.",
+            voiceclip=(True, "efficient"), 
         )
         return False
     
@@ -99,14 +102,30 @@ def validate_attempt(page: ctk.CTkFrame) -> bool:
     # len(phone) == 10 checks if the length of the phone number is exactly 10 characters
 
     if not (phone.isascii() and phone.isdigit() and len(phone) == 10):
-        notification_handler.error_notification(
-            "Enter a 10-digit phone number using numbers only."
+        return notification_handler.error_notification(
+            "Enter a 10-digit phone number using numbers only.",
+            voiceclip=(True, "use_my_help"), 
         )
-        return False
 
+    # Find an account using this phone number
+    with database.connect() as connection:
+        existing_phone = connection.execute(
+            "SELECT id FROM users WHERE phone = ?",
+            (phone,),
+        ).fetchone()
+
+    # Reject a phone number already on file
+    if existing_phone is not None:
+        return notification_handler.error_notification(
+            "That number's already assigned to an existing account. Talk about déjà vu! Try another, or log in.",
+            expression="stunned",
+            duration=4500
+        )
+        
     if not username:
         notification_handler.error_notification(
-            "I'll need a username from you to create an account."
+            "I'll need a username from you to create an account.",
+            voiceclip=(True, "something_on_your_mind"), 
         )
         return False
 
@@ -126,7 +145,9 @@ def validate_attempt(page: ctk.CTkFrame) -> bool:
     # If the username already exists
     if existing_user is not None:
         notification_handler.error_notification(
-            "Someone beat you to that username. Pick another, and make it yours."
+            "Sorry, someone beat you to that username. Pick another, and make it yours.",
+            expression="stunned",
+            voiceclip=(True, "apologize"), 
         )
         return False
 
@@ -141,15 +162,17 @@ def validate_attempt(page: ctk.CTkFrame) -> bool:
     if len(password) < 8:
         notification_handler.error_notification(
             "Eight characters minimum. A stronger lock keeps your account safer!",
+            voiceclip=(True, "efficient"), 
         )
         return False
 
     # Ensure both passwords match
     if password != confirm_password:
-        notification_handler.error_notification(
-            "Those passwords don't match! I promise I won't tell anyone about the typo.",
+        return notification_handler.error_notification(
+            "Mismatch detected! Before we get anywhere, those passwords need to be identical.",
+            expression="worried",
+            voiceclip=(True, "cutting_it_close"), 
         )
-        return False
     # Validate inputs, then create the account.
 
     # Navigate only after the account is successfully saved.
