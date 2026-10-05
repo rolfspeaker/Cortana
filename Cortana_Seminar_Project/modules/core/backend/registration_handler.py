@@ -29,7 +29,7 @@ def validate_attempt(page: ctk.CTkFrame) -> bool:
         )
         return False
 
-    if any(char.isdigit() for char in first_name):
+    if any(char.isdigit() for char in first_name) or not first_name.isalnum():
         notification_handler.error_notification(
             "Ever seen a first name with numbers in it? Me neither. Please remove any digits.",
             voiceclip=(True, "i_think_we_both_know"),
@@ -42,7 +42,7 @@ def validate_attempt(page: ctk.CTkFrame) -> bool:
             )
         return False
 
-    if any(char.isdigit() for char in last_name):
+    if any(char.isdigit() for char in last_name) or not last_name.isalnum():
         notification_handler.error_notification(
             "I'd be hard pressed to find a last name with numbers in it. Letters only, please.",
             voiceclip=(True, "i_think_we_both_know"),

@@ -17,6 +17,7 @@ class RegisterPage(ctk.CTkFrame):
         self._last_size = None
         self.entries = {}
         self._fields = []
+        self._password_toggles = {}
 
         self.title = self.canvas.create_text(
             0, 0,
@@ -81,6 +82,30 @@ class RegisterPage(ctk.CTkFrame):
             setattr(self, name, entry)
             self._fields.append((label_id, window_id, entry))
 
+            if secret:
+                # Match the login page control inside each password bar
+                toggle = ctk.CTkButton(
+                    entry,
+                    text="Show",
+                    width=22,
+                    height=22,
+                    corner_radius=8,
+                    fg_color="#C770A4",
+                    text_color="#653081",
+                    hover_color="#C770A4",
+                    bg_color="#C770A4",
+                    command=lambda field=name: self._toggle_password(field),
+                    font=ctk.CTkFont(
+                        family="Consolas",
+                        underline=True,
+                        size=14,
+                    ),
+                )
+                toggle.place(relx=1, rely=0.5, x=-4, anchor="e")
+                toggle.bind("<MouseWheel>", self._scroll, add="+")
+                self._password_toggles[name] = toggle
+
+
         #def validate_first_name(event):
             #if not self.first_name.get().strip():
                 #self.canvas.yview_moveto(0)
@@ -141,6 +166,15 @@ class RegisterPage(ctk.CTkFrame):
 
         self.canvas.bind("<Configure>", self._layout)
         self.canvas.bind("<MouseWheel>", self._scroll)
+
+    def _toggle_password(self, name):
+        entry = self.entries[name]
+        toggle = self._password_toggles[name]
+
+        # Show the password on one click and hide it on the next
+        reveal = entry.cget("show") != ""
+        entry.configure(show="" if reveal else "*")
+        toggle.configure(text="Hide" if reveal else "Show")
 
     @staticmethod
     def _color_at(x, width):
@@ -203,6 +237,15 @@ class RegisterPage(ctk.CTkFrame):
 
             color = self._color_at(x + entry_width / 2, w)
             entry.configure(fg_color=color, bg_color=color)
+
+            # Blend the control into the password bar when the form resizes
+            for name, toggle in self._password_toggles.items():
+                if entry is self.entries[name]:
+                    toggle.configure(
+                        fg_color=color,
+                        bg_color=color,
+                        hover_color=color,
+                    )
 
             c.itemconfigure(
                 window,
